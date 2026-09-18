@@ -78,6 +78,10 @@ export interface UMLEdgeData {
   label?: string;
   sourceMultiplicity?: string;
   targetMultiplicity?: string;
+  /** Lado del nodo origen donde se ancla la relacion (top/bottom/left/right). */
+  sourceHandle?: string;
+  /** Lado del nodo destino donde se ancla la relacion (top/bottom/left/right). */
+  targetHandle?: string;
   // Permite que el tipo satisfaga Record<string, unknown> exigido por React Flow
   [key: string]: unknown;
 }
@@ -108,5 +112,9 @@ export interface DiagramState {
     label?: string;
     sourceMultiplicity?: string;
     targetMultiplicity?: string;
+    /** Lado del nodo origen donde se ancla la relacion (top/bottom/left/right). */
+    sourceHandle?: string;
+    /** Lado del nodo destino donde se ancla la relacion (top/bottom/left/right). */
+    targetHandle?: string;
   }>;
 }

@@ -1,8 +1,25 @@
 "use client";
 
-import { type EdgeProps, Handle, Position } from "@xyflow/react";
+import {
+  type EdgeProps,
+  type InternalNode,
+  Handle,
+  Position,
+  useNodes,
+} from "@xyflow/react";
+import { useMemo } from "react";
 import type { UMLEdgeData, UMLEdgeType } from "@/types/diagram";
 import { useCollaborationStore } from "@/store/collaboration-store";
+import {
+  advance,
+  directionFromPosition,
+  findOrthogonalRoute,
+  orthogonalizeEnds,
+  pointsToSVGPath,
+  segmentIntersectsRect,
+  type Point,
+  type Rect,
+} from "@/lib/reactflow/path-routing";
 
 /**
  * Tamanios y offsets de los marcadores SVG para cada tipo de relacion.
@@ -51,16 +68,53 @@ const MARKER_CONFIG: Record<
 };
 
 /**
+ * Punto de la polilinea ubicado a la mitad de su recorrido total.
+ * Se usa para centrar el label en el tramo visual real (no en el centro
+ * geometrico, que quedaria mal ubicado cuando la relacion se desvia).
+ */
+function midPointOf(pts: Point[]): Point {
+  if (pts.length < 2) return { x: pts[0]?.x ?? 0, y: pts[0]?.y ?? 0 };
+  let total = 0;
+  const lens: number[] = [];
+  for (let i = 1; i < pts.length; i++) {
+    const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    lens.push(len);
+    total += len;
+  }
+  let target = total / 2;
+  for (let i = 0; i < lens.length; i++) {
+    if (target <= lens[i]) {
+      const t = lens[i] === 0 ? 0 : target / lens[i];
+      return {
+        x: pts[i].x + (pts[i + 1].x - pts[i].x) * t,
+        y: pts[i].y + (pts[i + 1].y - pts[i].y) * t,
+      };
+    }
+    target -= lens[i];
+  }
+  return pts[pts.length - 1];
+}
+
+/**
  * Edge UML base que dibuja una linea con marcadores SVG diferenciados
  * por tipo de relacion (triangulo, rombo, flecha, linea punteada).
- * Muestra label (nombre) y multiplicidades en los extremos.
+ *
+ * Trazado inteligente:
+ * - Si la linea recta no cruza ninguna clase, se mantiene simple (original).
+ * - Si pasaria por encima de una tabla, se calcula una ruta ortogonal (A*) que
+ *   rodea la tabla y llega al destino por un lado libre ("por otro campo").
+ * - Respeta el lado exacto (top/bottom/left/right) donde se anclo la relacion.
  */
 export function UMLBaseEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
   targetY,
+  sourcePosition,
+  targetPosition,
   data,
   label,
   style,
@@ -76,32 +130,107 @@ export function UMLBaseEdge({
     return lock.userId === s.userId ? null : lock.userName;
   });
 
-  // Distancia euclidea entre origen y destino
-  const dx = targetX - sourceX;
-  const dy = targetY - sourceY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
+  // Obstaculos = todas las tablas de clase menos el origen y el destino.
+  // useNodes devuelve los nodos internos con ancho/alto medido en pantalla.
+  const allNodes = useNodes() as InternalNode[];
+  const obstacles = useMemo<Rect[]>(() => {
+    return allNodes
+      .filter((n) => n.id !== source && n.id !== target)
+      .filter((n) => n.measured?.width != null && n.measured?.height != null)
+      .map((n) => ({
+        x: n.internals.positionAbsolute.x,
+        y: n.internals.positionAbsolute.y,
+        width: n.measured?.width ?? 0,
+        height: n.measured?.height ?? 0,
+      }));
+  }, [allNodes, source, target]);
 
-  // Vector unitario de la direccion
-  const ux = dist > 0 ? dx / dist : 0;
-  const uy = dist > 0 ? dy / dist : 0;
+  // Rectangulos de las tablas origen y destino (se pasan al router para que
+  // el A* no re-entre al cuerpo de estas al dar la vuelta).
+  const anchors = useMemo(() => {
+    const rectOf = (id: string): Rect | null => {
+      const n = allNodes.find((nd) => nd.id === id);
+      if (!n || n.measured?.width == null || n.measured?.height == null)
+        return null;
+      return {
+        x: n.internals.positionAbsolute.x,
+        y: n.internals.positionAbsolute.y,
+        width: n.measured.width,
+        height: n.measured.height,
+      };
+    };
+    return {
+      sourceRect: rectOf(source) ?? undefined,
+      targetRect: rectOf(target) ?? undefined,
+    };
+  }, [allNodes, source, target]);
 
-  // Offset para que el marker no quede encima del borde del nodo.
-  // Los markers tienen ~14px de ancho; el refX compensa, pero agregamos
-  // un margen para que la linea no se superponga al borde del nodo.
+  // Geometria de la linea: recta si esta libre, si no ruta ortogonal (A*)
+  const geometry = useMemo(() => {
+    const src: Point = { x: sourceX, y: sourceY };
+    const tgt: Point = { x: targetX, y: targetY };
+    const srcDir = directionFromPosition(sourcePosition);
+    const tgtDir = directionFromPosition(targetPosition);
+
+    // Puntos de "trabajo": un poco alejados del borde del nodo, en la
+    // direccion perpendicular a la salida, para que la ruta no roze la tabla.
+    // Se usa 32 para que el lead no caiga dentro del area expandida (pad) de
+    // una tabla vecina (lo que dejaba al router sin camino y degradaba a
+    // la recta directa que pasaba por debajo de la clase).
+    const LEAD = 32;
+    const srcLead = advance(src, srcDir, LEAD);
+    const tgtLead = advance(tgt, tgtDir, LEAD);
+
+    // Se conserva la recta original si no cruza ninguna clase intermedia
+    const crossesObstacle = obstacles.some((o) =>
+      segmentIntersectsRect(src, tgt, o),
+    );
+    if (!crossesObstacle) return { points: [src, tgt] };
+
+    const route = findOrthogonalRoute(srcLead, tgtLead, obstacles, anchors);
+    // Sin ruta posible (tablas muy juntas): se degrada a la recta directa
+    if (!route) return { points: [src, tgt] };
+
+    // Ajusta salida/entrada para que queden perfectamente ortogonales
+    const aligned = orthogonalizeEnds(route, srcDir, tgtDir);
+    return { points: [src, ...aligned, tgt] };
+  }, [sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, obstacles, anchors]);
+
+  // Convierte la polilinea en el path SVG, recorta los extremos para que el
+  // marker no tapen el borde del nodo y calcula posiciones de labels/multiplicidades
   const MARKER_OFFSET = 6;
+  const { pathD, firstDir, lastDir, mid, start, end } = useMemo(() => {
+    const pts = geometry.points.map((p) => ({ ...p }));
 
-  // Puntos ajustados: se retroceden un poco del borde del nodo
-  const sx = sourceX + ux * MARKER_OFFSET;
-  const sy = sourceY + uy * MARKER_OFFSET;
-  const tx = targetX - ux * MARKER_OFFSET;
-  const ty = targetY - uy * MARKER_OFFSET;
+    // Direccion unitaria del primer y ultimo tramo (pueden no coincidir
+    // cuando la linea se desvia para esquivar una tabla).
+    const f0 = pts[0];
+    const f1 = pts[1] ?? pts[0];
+    const l0 = pts[pts.length - 1];
+    const l1 = pts[pts.length - 2] ?? l0;
+    const fLen = Math.hypot(f1.x - f0.x, f1.y - f0.y) || 1;
+    const lLen = Math.hypot(l0.x - l1.x, l0.y - l1.y) || 1;
+    const fx = (f1.x - f0.x) / fLen;
+    const fy = (f1.y - f0.y) / fLen;
+    const lx = (l0.x - l1.x) / lLen;
+    const ly = (l0.y - l1.y) / lLen;
 
-  // Path: linea recta (suficiente para UML; las curvas deforman los markers)
-  const path = `M ${sx} ${sy} L ${tx} ${ty}`;
+    // Retrocede los extremos un poco para que el marker quede pegado al borde
+    pts[0] = { x: f0.x + fx * MARKER_OFFSET, y: f0.y + fy * MARKER_OFFSET };
+    pts[pts.length - 1] = {
+      x: l0.x - lx * MARKER_OFFSET,
+      y: l0.y - ly * MARKER_OFFSET,
+    };
 
-  // Punto medio para el label
-  const midX = (sx + tx) / 2;
-  const midY = (sy + ty) / 2;
+    return {
+      pathD: pointsToSVGPath(pts, 6),
+      firstDir: { x: fx, y: fy },
+      lastDir: { x: lx, y: ly },
+      mid: midPointOf(pts),
+      start: pts[0],
+      end: pts[pts.length - 1],
+    };
+  }, [geometry.points]);
 
   // Estilo de linea punteada para dependencia/implementacion
   const strokeStyle: React.CSSProperties = {
@@ -122,7 +251,7 @@ export function UMLBaseEdge({
 
       {/* Linea principal con marcadores */}
       <path
-        d={path}
+        d={pathD}
         fill="none"
         stroke="#849495"
         strokeWidth={1.5}
@@ -135,8 +264,8 @@ export function UMLBaseEdge({
       {/* Label central */}
       {typeof label === "string" && label && (
         <text
-          x={midX}
-          y={midY - 8}
+          x={mid.x}
+          y={mid.y - 8}
           textAnchor="middle"
           fill="#b9cacb"
           fontSize={11}
@@ -150,7 +279,7 @@ export function UMLBaseEdge({
       {/* Candado si la arista esta bloqueada por otro usuario (CU-2.5) */}
       {lockedBy && (
         <g
-          transform={`translate(${midX + 4}, ${midY - 20})`}
+          transform={`translate(${mid.x + 4}, ${mid.y - 20})`}
           className="pointer-events-none select-none"
         >
           <rect x="0" y="2" width="7" height="6" rx="1.5" fill="#ef5350" />
@@ -169,8 +298,8 @@ export function UMLBaseEdge({
       {/* Multiplicidad origen */}
       {edgeData.sourceMultiplicity && (
         <text
-          x={sx + ux * 14 - uy * 8}
-          y={sy + uy * 14 + ux * 8}
+          x={start.x + firstDir.x * 14 - firstDir.y * 8}
+          y={start.y + firstDir.y * 14 + firstDir.x * 8}
           fill="#b9cacb"
           fontSize={10}
           fontFamily="Inter, sans-serif"
@@ -183,8 +312,8 @@ export function UMLBaseEdge({
       {/* Multiplicidad destino */}
       {edgeData.targetMultiplicity && (
         <text
-          x={tx - ux * 14 - uy * 8}
-          y={ty - uy * 14 + ux * 8}
+          x={end.x - lastDir.x * 14 - lastDir.y * 8}
+          y={end.y - lastDir.y * 14 + lastDir.x * 8}
           textAnchor="end"
           fill="#b9cacb"
           fontSize={10}

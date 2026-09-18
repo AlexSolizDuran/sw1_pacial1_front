@@ -6,6 +6,7 @@ import {
   updateWorkspace,
   deleteWorkspace,
   updateDiagram,
+  updateDiagramGroup,
   deleteDiagram,
   reorderDiagrams,
 } from "@/lib/api";
@@ -47,6 +48,8 @@ interface DiagramState {
   removeWorkspace: (id: string) => Promise<void>;
   /** Renombra un diagrama (PATCH /diagrams/:id). */
   renameDiagram: (id: string, name: string) => Promise<void>;
+  /** Cambia el grupo de un diagrama (PATCH /diagrams/:id, CU-1.3). */
+  setDiagramGroup: (id: string, group: string | null) => Promise<void>;
   /** Elimina un diagrama (DELETE /diagrams/:id). */
   removeDiagram: (id: string) => Promise<void>;
   /** Reordena los diagramas de un workspace (PUT /.../diagrams/order). */
@@ -110,6 +113,10 @@ export const useDiagramStore = create<DiagramState>((set) => ({
 
   renameDiagram: async (id, name) => {
     await updateDiagram(id, name);
+  },
+
+  setDiagramGroup: async (id, group) => {
+    await updateDiagramGroup(id, group);
   },
 
   removeDiagram: async (id) => {

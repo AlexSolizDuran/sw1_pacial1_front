@@ -59,7 +59,13 @@ interface EditorState {
   addNode: (type: UMLNodeType, position: { x: number; y: number }) => void;
   updateNode: (id: string, data: Partial<UMLNodeData>) => void;
   deleteNode: (id: string) => void;
-  addEdge: (source: string, target: string, type: UMLEdgeType) => void;
+  addEdge: (
+    source: string,
+    target: string,
+    type: UMLEdgeType,
+    sourceHandle?: string,
+    targetHandle?: string,
+  ) => void;
   updateEdge: (id: string, data: Partial<UMLEdgeData>) => void;
   deleteEdge: (id: string) => void;
   select: (id: string | null) => void;
@@ -112,6 +118,9 @@ function serializeState(nodes: Node[], edges: Edge[]): DiagramState {
         label: typeof e.label === "string" ? e.label : edgeData.label,
         sourceMultiplicity: edgeData.sourceMultiplicity,
         targetMultiplicity: edgeData.targetMultiplicity,
+        // Persiste el lado exacto del nodo donde se ancla la relacion
+        sourceHandle: e.sourceHandle ?? edgeData.sourceHandle,
+        targetHandle: e.targetHandle ?? edgeData.targetHandle,
       };
     }),
   };
@@ -164,6 +173,8 @@ export const useEditorStore = create<EditorState>()(
       label?: string;
       sourceMultiplicity?: string;
       targetMultiplicity?: string;
+      sourceHandle?: string;
+      targetHandle?: string;
     }>;
 
     const restoredEdges: Edge[] = edgesFromDb.map((e) => ({
@@ -172,11 +183,15 @@ export const useEditorStore = create<EditorState>()(
       target: e.target,
       type: e.type ?? "association",
       label: e.label,
+      sourceHandle: e.sourceHandle,
+      targetHandle: e.targetHandle,
       data: {
         type: e.type ?? "association",
         label: e.label,
         sourceMultiplicity: e.sourceMultiplicity,
         targetMultiplicity: e.targetMultiplicity,
+        sourceHandle: e.sourceHandle,
+        targetHandle: e.targetHandle,
       },
     }));
 
@@ -277,10 +292,20 @@ export const useEditorStore = create<EditorState>()(
     debounceSave(get, set);
   },
 
-  addEdge: (source, target, type) => {
+  addEdge: (source, target, type, sourceHandle, targetHandle) => {
     if (!canEdit()) return;
     const id = makeId("edge");
-    const edge: Edge = { id, source, target, type, data: { type } };
+    // Guarda el lado exacto (sourceHandle/targetHandle) para que el trazado de
+    // la relacion se ancle en el punto del nodo donde el usuario la creo.
+    const edge: Edge = {
+      id,
+      source,
+      target,
+      type,
+      sourceHandle,
+      targetHandle,
+      data: { type, sourceHandle, targetHandle },
+    };
     const edges = [...get().edges, edge];
     set({ edges, selectedId: id, dirty: true });
     syncToDoc(get().nodes, edges);

@@ -100,12 +100,15 @@ export interface ChatRequest {
   sessionId?: string;
   instruccion: string;
   modo?: "agregar" | "reemplazar";
+  /** Enviar contexto de los últimos mensajes de la sesión (default true). */
+  conContexto?: boolean;
   modelo?: string;
   params?: { temperatura?: number; topP?: number; maxTokens?: number };
   /** Estado observable del lienzo al momento del envio. */
   snapshot: DiagramState;
   seleccionId?: string;
   seleccionKind?: "entidad" | "relacion";
+  seleccionREstrictiva?: boolean;
 }
 
 /** Respuesta completa de POST /ai/chat. */
@@ -119,6 +122,14 @@ export interface ChatResponse {
   puedeAplicar: boolean;
   cache: boolean;
   modelo: string;
+}
+
+/** Respuesta de POST /ai/diagram-from-image (importar un diagrama por imagen). */
+export interface ImportarImagenResponse {
+  /** Acciones aplicables al lienzo (ids existentes ya resueltos). */
+  acciones: DiagramAction[];
+  /** Avisos de lo que se descarto (ej. relacion con entidad inexistente). */
+  advertencias: string[];
 }
 
 /** Evento del stream SSE de POST /ai/chat/stream. */

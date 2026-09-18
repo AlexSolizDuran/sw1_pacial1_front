@@ -17,6 +17,7 @@ import type {
   DiagramAction,
 } from "@/types/ai";
 import type { ChatRequest } from "@/types/ai";
+import { MicButton } from "@/components/common/MicButton";
 
 /** Burbuja de mensaje usada en la interfaz del chat. */
 interface Burbuja {
@@ -58,6 +59,7 @@ export function AIChatPanel() {
   const [modo, setModo] = useState<"agregar" | "reemplazar">("agregar");
   const [ejecucion, setEjecucion] = useState<"plan" | "build">("build");
   const [alcance, setAlcance] = useState<"todo" | "seleccion">("todo");
+  const [conContexto, setConContexto] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
     acciones: DiagramAction[];
@@ -87,7 +89,7 @@ export function AIChatPanel() {
         setModelos(m);
         if (m.length > 0) setModelo((actual) => actual || m[0].id);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [abierto]);
 
   // Restaura el historial de la sesion mas reciente del diagrama
@@ -115,7 +117,7 @@ export function AIChatPanel() {
           setMensajes(burbujas);
         });
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [abierto, diagramId]);
 
   useEffect(() => {
@@ -137,11 +139,13 @@ export function AIChatPanel() {
       sessionId: sessionId ?? undefined,
       instruccion,
       modo,
+      conContexto,
       ...(modelo ? { modelo } : {}),
       snapshot,
-      ...(soloSeleccion && seleccionKind && selectedId
+      ...(seleccionKind && selectedId
         ? { seleccionId: selectedId, seleccionKind }
         : {}),
+      ...(soloSeleccion ? { seleccionRestrictiva: true } : {}),
     };
 
     const userBubble: Burbuja = {
@@ -181,11 +185,11 @@ export function AIChatPanel() {
               prev.map((b) =>
                 b.id === aiBubbleId
                   ? {
-                      ...b,
-                      texto: ev.texto,
-                      advertencias: ev.advertencias,
-                      ...(aplicado ? { aplicado: true } : {}),
-                    }
+                    ...b,
+                    texto: ev.texto,
+                    advertencias: ev.advertencias,
+                    ...(aplicado ? { aplicado: true } : {}),
+                  }
                   : b,
               ),
             );
@@ -326,11 +330,10 @@ export function AIChatPanel() {
                       ? "Edita el diagrama actual"
                       : "Genera el diagrama desde cero"
                   }
-                  className={`px-1.5 py-1 text-[11px] transition-colors ${
-                    modo === valor
+                  className={`px-1.5 py-1 text-[11px] transition-colors ${modo === valor
                       ? "bg-primary-container text-on-primary-container"
                       : "text-on-surface-variant hover:bg-surface-container-highest"
-                  }`}
+                    }`}
                 >
                   {etiqueta}
                 </button>
@@ -354,11 +357,10 @@ export function AIChatPanel() {
                       ? "Solo muestra el plan: no modifica el lienzo"
                       : "Ejecuta directamente todo lo que se le pide"
                   }
-                  className={`px-1.5 py-1 text-[11px] transition-colors ${
-                    ejecucion === valor
+                  className={`px-1.5 py-1 text-[11px] transition-colors ${ejecucion === valor
                       ? "bg-secondary-container text-on-secondary-container"
                       : "text-on-surface-variant hover:bg-surface-container-highest"
-                  }`}
+                    }`}
                 >
                   {etiqueta}
                 </button>
@@ -366,9 +368,8 @@ export function AIChatPanel() {
             </div>
 
             <label
-              className={`flex items-center gap-1 text-[11px] ${
-                seleccionKind ? "" : "opacity-50"
-              }`}
+              className={`flex items-center gap-1 text-[11px] ${seleccionKind ? "" : "opacity-50"
+                }`}
               title={
                 seleccionKind
                   ? `Solo trabajar sobre: ${seleccionEtiqueta}`
@@ -389,6 +390,23 @@ export function AIChatPanel() {
                   ? `Solo: ${seleccionEtiqueta}`
                   : "Solo selección"}
               </span>
+            </label>
+
+            <label
+              className="flex items-center gap-1 text-[11px]"
+              title={
+                conContexto
+                  ? "Incluye los últimos mensajes de la sesión (más preciso, más lento)"
+                  : "Responde solo a este mensaje, sin contexto anterior (más rápido)"
+              }
+            >
+              <input
+                type="checkbox"
+                checked={conContexto}
+                onChange={(e) => setConContexto(e.target.checked)}
+                className="h-3 w-3 accent-primary"
+              />
+              <span className="text-on-surface-variant">Contexto</span>
             </label>
           </div>
 
@@ -418,27 +436,26 @@ export function AIChatPanel() {
             {mensajes.map((b) => (
               <div key={b.id}>
                 <div
-                  className={`max-w-[88%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs ${
-                    b.rol === "user"
+                  className={`max-w-[88%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs ${b.rol === "user"
                       ? "ml-auto bg-secondary-container text-on-secondary-container"
                       : b.rol === "sistema"
                         ? "bg-error-container text-on-error-container"
                         : "bg-surface-container-high text-on-surface"
-                  }`}
+                    }`}
                 >
                   {b.texto || (cargando && b.rol === "assistant" ? "…" : "")}
                 </div>
                 {b.advertencias && b.advertencias.length > 0 && (
-<div className="mt-1 space-y-0.5">
-                  {b.advertencias.map((w, i) => (
-                    <p
-                      key={i}
-                      className="rounded bg-tertiary-container px-2 py-1 text-[10px] text-on-tertiary-container"
-                    >
-                      {w}
-                    </p>
-                  ))}
-                </div>
+                  <div className="mt-1 space-y-0.5">
+                    {b.advertencias.map((w, i) => (
+                      <p
+                        key={i}
+                        className="rounded bg-tertiary-container px-2 py-1 text-[10px] text-on-tertiary-container"
+                      >
+                        {w}
+                      </p>
+                    ))}
+                  </div>
                 )}
                 {b.aplicado && (
                   <p className="mt-1 rounded bg-secondary-container px-2 py-1 text-[10px] font-medium text-on-secondary-container">
@@ -530,6 +547,7 @@ export function AIChatPanel() {
                 <path d="M22 2l-7 20-4-9-9-4z" />
               </svg>
             </button>
+            <MicButton onTranscrito={setEntrada} deshabilitado={cargando} />
           </form>
         </div>
       )}

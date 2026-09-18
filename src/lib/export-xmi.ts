@@ -71,6 +71,36 @@ function isPrimitiveType(name: string): boolean {
 }
 
 /**
+ * Estima el ancho de un nodo según su contenido (para el widget de Umbrello).
+ * El editor no persiste el tamanio medido, así que se aproxima por el texto.
+ */
+function estimateNodeWidth(node: NonNullable<DiagramState["nodes"][number]>): number {
+  const data = node.data;
+  const name = data.name || "Clase";
+  const longestField = Math.max(0, ...(data.fields ?? []).map((f) => f.name.length));
+  const longestMethod = Math.max(0, ...(data.methods ?? []).map((m) => m.name.length));
+  const longestLiteral = Math.max(0, ...(data.literals ?? []).map((l) => l.length));
+  return Math.max(120, name.length * 8 + 30, longestField * 8 + 60, longestMethod * 8 + 60, longestLiteral * 8 + 40);
+}
+
+/** Estima la altura de un nodo según su contenido (para el widget de Umbrello). */
+function estimateNodeHeight(node: NonNullable<DiagramState["nodes"][number]>): number {
+  const data = node.data;
+  const header = 36;
+  const fields = (data.fields?.length ?? 0) * 18;
+  const methods = (data.methods?.length ?? 0) * 18;
+  const literals = (data.literals?.length ?? 0) * 18;
+  return Math.max(header + 18, header + fields + methods + literals + 8);
+}
+
+/** Tag del widget de Umbrello según el tipo de nodo. */
+function umbrelloWidgetTag(nodeType: string): string {
+  if (nodeType === "enumeration") return "enumwidget";
+  if (nodeType === "interface") return "interfacewidget";
+  return "classwidget";
+}
+
+/**
  * Construye la cadena XMI 1.2 (UML 1.4) para Umbrello.
  * @param state Estado serializado del diagrama (nodos + aristas).
  * @param modelName Nombre del modelo raiz.
@@ -265,6 +295,36 @@ function buildUmbrelloXmi(state: DiagramState, modelName: string): string {
   }
 
   parts.push(`      </UML:Namespace.ownedElement>`);
+  parts.push(``);
+
+  // -------- Geometria del diagrama (extension de Umbrello) --------
+  // Umbrello guarda las posiciones de los widgets dentro del modelo, en un
+  // bloque <XMI.extension xmi.extender="umbrello"> con <diagrams> y <widgets>.
+  // Se emite aqui para que al abrir el archivo los nodos conserven su ubicacion.
+  parts.push(`      <XMI.extension xmi.extender="umbrello">`);
+  parts.push(`        <diagrams>`);
+  parts.push(
+    `          <diagram name="${escapeXml(modelName || "diagrama")}" type="1" zoom="100" canvaswidth="3982" canvasheight="1784">`,
+  );
+  parts.push(`            <widgets>`);
+  for (const node of nodes) {
+    const nodeId = xmiId("cls", node.id);
+    const tag = umbrelloWidgetTag((node.type as UMLNodeType | undefined) ?? "class");
+    const pos = node.position ?? { x: 80, y: 80 };
+    const x = Math.round(pos.x);
+    const y = Math.round(pos.y);
+    const w = estimateNodeWidth(node);
+    const h = estimateNodeHeight(node);
+    parts.push(
+      `              <${tag} xmi.id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" showstereotype="1" showpackage="1" showscope="1" showattributes="1" showattsigs="601" showoperations="1" showopsigs="601" fillcolor="#ffffc0" linecolor="#990000" textcolor="#000000"/>`,
+    );
+  }
+  parts.push(`            </widgets>`);
+  parts.push(`            <messages/>`);
+  parts.push(`            <associations/>`);
+  parts.push(`          </diagram>`);
+  parts.push(`        </diagrams>`);
+  parts.push(`      </XMI.extension>`);
   parts.push(`    </UML:Model>`);
   parts.push(`  </XMI.content>`);
   parts.push(``);
@@ -273,6 +333,16 @@ function buildUmbrelloXmi(state: DiagramState, modelName: string): string {
   parts.push(`</XMI>`);
 
   return parts.join("\n");
+}
+
+/** Convierte una multiplicidad del editor en el par lower/upper UML 2.5. */
+function bounds(mult: string): [string, string] {
+  // "*" es el limite superior sin cota; UML la modela como 0..*.
+  if (mult === "*") return ["0", "*"];
+  const partes = mult.split("..");
+  const lo = partes[0] || "1";
+  const up = partes[1] || lo;
+  return [lo, up];
 }
 
 /**
@@ -300,6 +370,27 @@ function buildEnterpriseXmi(state: DiagramState, modelName: string): string {
   parts.push(
     `  <uml:Model xmi:id="${modelId}" name="${escapeXml(modelName)}">`,
   );
+
+  // Mapa nombre (minusculas) -> id de clase para referenciar tipos-clase
+  // por xmi:idref (round-trip fiel al importar).
+  const classIdByName = new Map<string, string>();
+  for (const node of nodes) {
+    classIdByName.set(
+      (node.data.name || "").toLowerCase(),
+      xmiId("cls", node.id),
+    );
+  }
+
+  /** Linea <type .../> para un tipo: primitivo, clase o T_id generico. */
+  const typeTag = (typeName: string): string => {
+    const lower = (typeName || "string").toLowerCase();
+    if (isPrimitiveType(lower)) {
+      return `<type xmi:type="uml:PrimitiveType" href="${PRIMITIVE_HREF[lower]}"/>`;
+    }
+    const cls = classIdByName.get(lower);
+    if (cls) return `<type xmi:idref="${cls}"/>`;
+    return `<type xmi:idref="${typeToId(typeName)}"/>`;
+  };
 
   // -------- Clases / interfaces / abstractas / enumeraciones --------
   for (const node of nodes) {
@@ -339,18 +430,11 @@ function buildEnterpriseXmi(state: DiagramState, modelName: string): string {
     for (const field of node.data.fields ?? []) {
       const fieldId = xmiId("attr", field.id || `${node.id}_${field.name}`);
       const typeName = field.type || "string";
-      const typeId = typeToId(typeName);
       parts.push(
         `      <ownedAttribute xmi:type="uml:Property" xmi:id="${fieldId}" name="${escapeXml(field.name)}" visibility="${toUmlVisibility(field.visibility)}"${field.isStatic ? ` isStatic="true"` : ""}>`,
       );
       // Tipo del atributo
-      if (isPrimitiveType(typeName.toLowerCase())) {
-        parts.push(
-          `        <type xmi:type="uml:PrimitiveType" href="${PRIMITIVE_HREF[typeName.toLowerCase()]}"/>`,
-        );
-      } else {
-        parts.push(`        <type xmi:idref="${typeId}"/>`);
-      }
+      parts.push(`        ${typeTag(typeName)}`);
       if (field.defaultValue) {
         parts.push(
           `        <defaultValue xmi:type="uml:LiteralString" xmi:id="${fieldId}_def" value="${escapeXml(field.defaultValue)}"/>`,
@@ -365,37 +449,36 @@ function buildEnterpriseXmi(state: DiagramState, modelName: string): string {
         `      <ownedOperation xmi:type="uml:Operation" xmi:id="${methodId}" name="${escapeXml(method.name)}" visibility="${toUmlVisibility(method.visibility)}"${method.isAbstract ? ` isAbstract="true"` : ""}${method.isStatic ? ` isStatic="true"` : ""}>`,
       );
       if (method.returnType && method.returnType !== "void") {
-        const retType = method.returnType.toLowerCase();
         parts.push(
           `        <ownedParameter xmi:type="uml:Parameter" xmi:id="${methodId}_ret" name="return" direction="return">`,
         );
-        if (isPrimitiveType(retType)) {
-          parts.push(
-            `          <type xmi:type="uml:PrimitiveType" href="${PRIMITIVE_HREF[retType]}"/>`,
-          );
-        } else {
-          parts.push(`          <type xmi:idref="${typeToId(method.returnType)}"/>`);
-        }
+        parts.push(`          ${typeTag(method.returnType)}`);
         parts.push(`        </ownedParameter>`);
       }
       for (const idx in method.params ?? []) {
         const param = method.params[idx];
+        if (!param) continue;
         const paramId = xmiId("p", `${method.id}_${param.id || param.name}`);
         parts.push(
           `        <ownedParameter xmi:type="uml:Parameter" xmi:id="${paramId}" name="${escapeXml(param.name)}" direction="in">`,
         );
-        if (isPrimitiveType((param.type || "string").toLowerCase())) {
-          parts.push(
-            `          <type xmi:type="uml:PrimitiveType" href="${PRIMITIVE_HREF[(param.type || "string").toLowerCase()]}"/>`,
-          );
-        } else {
-          parts.push(
-            `          <type xmi:idref="${typeToId(param.type || "string")}"/>`,
-          );
-        }
+        parts.push(`          ${typeTag(param.type || "string")}`);
         parts.push(`        </ownedParameter>`);
       }
-      parts.push(`      </ownedOperation>`);
+    parts.push(`      </ownedOperation>`);
+    }
+
+    // Herencias donde esta clase es la hija: se anidan (estandar XMI 2.5,
+    // compatible con EA y necesario para recuperar el origen al importar).
+    for (const edge of edges) {
+      if (
+        ((edge.type as UMLEdgeType) || "association") === "inheritance" &&
+        edge.source === node.id
+      ) {
+        parts.push(
+          `      <generalization xmi:type="uml:Generalization" xmi:id="${xmiId("gen", edge.id)}" general="${xmiId("cls", edge.target)}"/>`,
+        );
+      }
     }
 
     parts.push(`    </packagedElement>`);
@@ -407,12 +490,9 @@ function buildEnterpriseXmi(state: DiagramState, modelName: string): string {
     const srcId = xmiId("cls", edge.source);
     const tgtId = xmiId("cls", edge.target);
 
+    // Herencia: ya anidada dentro de la clase hija (ver arriba); aqui solo
+    // se leen Generalization sueltas de otras herramientas (con specific).
     if (edgeType === "inheritance") {
-      parts.push(
-        `    <packagedElement xmi:type="uml:Generalization" xmi:id="${xmiId("gen", edge.id)}" general="${tgtId}">`,
-      );
-      parts.push(`      <general xmi:idref="${tgtId}"/>`);
-      parts.push(`    </packagedElement>`);
       continue;
     }
     if (edgeType === "implementation") {
@@ -451,14 +531,16 @@ function buildEnterpriseXmi(state: DiagramState, modelName: string): string {
     parts.push(`      <memberEnd xmi:idref="${endA}"/>`);
     parts.push(`      <memberEnd xmi:idref="${endB}"/>`);
     // Extremo A (origen)
+    const [loA, upA] = bounds(srcMult);
+    const [loB, upB] = bounds(tgtMult);
     parts.push(
       `      <ownedEnd xmi:type="uml:Property" xmi:id="${endA}" name="${escapeXml(edge.label || "")}" type="${srcId}" aggregation="${agg(false)}" association="${assocId}">`,
     );
     parts.push(
-      `        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="${endA}_lo" value="${escapeXml(srcMult.split("..")[0] || "1")}"/>`,
+      `        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="${endA}_lo" value="${escapeXml(loA)}"/>`,
     );
     parts.push(
-      `        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="${endA}_up" value="${escapeXml(srcMult.split("..")[1] || "1")}"/>`,
+      `        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="${endA}_up" value="${escapeXml(upA)}"/>`,
     );
     parts.push(`      </ownedEnd>`);
     // Extremo B (destino)
@@ -466,16 +548,58 @@ function buildEnterpriseXmi(state: DiagramState, modelName: string): string {
       `      <ownedEnd xmi:type="uml:Property" xmi:id="${endB}" name="" type="${tgtId}" aggregation="${agg(diamondEnd)}" association="${assocId}">`,
     );
     parts.push(
-      `        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="${endB}_lo" value="${escapeXml(tgtMult.split("..")[0] || "1")}"/>`,
+      `        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="${endB}_lo" value="${escapeXml(loB)}"/>`,
     );
     parts.push(
-      `        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="${endB}_up" value="${escapeXml(tgtMult.split("..")[1] || "1")}"/>`,
+      `        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="${endB}_up" value="${escapeXml(upB)}"/>`,
     );
     parts.push(`      </ownedEnd>`);
     parts.push(`    </packagedElement>`);
   }
 
   parts.push(`  </uml:Model>`);
+  parts.push(``);
+
+  // -------- Geometria del diagrama (extension de Enterprise Architect) --------
+  // EA guarda las posiciones de los elementos en un bloque
+  // <xmi:Extension extender="Enterprise Architect"> (XMI 2.x) con
+  //   <diagrams>
+  //     <diagram ...>
+  //       <elements>
+  //         <element geometry="Left=X;Top=Y;Right=R;Bottom=B;"
+  //                  subject="cls_Nodo" seqno="1" style="DUID=1;"/>
+  //       </elements>
+  //     </diagram>
+  //   </diagrams>
+  // `subject` referencia el xmi:id del clasificador y `geometry` es el
+  // rectangulo que lo dibuja (Left/Top = esquina superior izquierda).
+  const diagramId = xmiId("dia", modelName);
+  parts.push(`  <xmi:Extension extender="Enterprise Architect">`);
+  parts.push(`    <diagrams>`);
+  parts.push(`      <diagram xmi:id="${diagramId}">`);
+  parts.push(
+    `        <model package="${modelId}" localID="1" owner="${modelId}"/>`,
+  );
+  parts.push(
+    `        <properties name="${escapeXml(modelName || "diagrama")}" type="Logical"/>`,
+  );
+  parts.push(`        <extendedProperties/>`);
+  parts.push(`        <elements>`);
+  nodes.forEach((node, i) => {
+    const nodeId = xmiId("cls", node.id);
+    const pos = node.position ?? { x: 80, y: 80 };
+    const left = Math.round(pos.x);
+    const top = Math.round(pos.y);
+    const right = left + estimateNodeWidth(node);
+    const bottom = top + estimateNodeHeight(node);
+    parts.push(
+      `          <element geometry="Left=${left};Top=${top};Right=${right};Bottom=${bottom};" subject="${nodeId}" seqno="${i + 1}" style="DUID=${i + 1};"/>`,
+    );
+  });
+  parts.push(`        </elements>`);
+  parts.push(`      </diagram>`);
+  parts.push(`    </diagrams>`);
+  parts.push(`  </xmi:Extension>`);
   parts.push(`</xmi:XMI>`);
 
   return parts.join("\n");

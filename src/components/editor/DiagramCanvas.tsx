@@ -47,8 +47,19 @@ export function DiagramCanvas() {
   const releaseAllLocks = useCollaborationStore((s) => s.releaseAllLocks);
 
   const onConnect = useCallback(
-    (params: { source: string; target: string }) => {
-      addEdge(params.source, params.target, "association");
+    (params: {
+      source: string;
+      target: string;
+      sourceHandle: string | null;
+      targetHandle: string | null;
+    }) => {
+      addEdge(
+        params.source,
+        params.target,
+        "association",
+        params.sourceHandle ?? undefined,
+        params.targetHandle ?? undefined,
+      );
     },
     [addEdge],
   );

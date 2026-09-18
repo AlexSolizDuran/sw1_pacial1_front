@@ -22,6 +22,10 @@ export interface DiagramSummary {
   id: string;
   name: string;
   lastModified: string;
+  /** Posicion en el orden del workspace (CU-1.3). */
+  position: number;
+  /** Grupo de organizacion (CU-1.3, null = sin grupo). */
+  group: string | null;
 }
 
 /** Diagrama completo (respuesta de los endpoints de diagramas). */
@@ -29,6 +33,8 @@ export interface Diagram {
   id: string;
   name: string;
   position: number;
+  /** Grupo de organizacion (CU-1.3, null = sin grupo). */
+  group: string | null;
   lastModified: string;
   createdAt: string;
   createdById: string;

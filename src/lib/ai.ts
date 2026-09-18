@@ -16,6 +16,7 @@ import type {
   CanonicalField,
   CanonicalMethod,
   CanonicalRelation,
+  ImportarImagenResponse,
 } from "@/types/ai";
 import type {
   DiagramState,
@@ -90,6 +91,46 @@ export async function chatearStream(
       }
     }
   }
+}
+
+/**
+ * Envia una imagen de diagrama de clases al microservicio de vision
+ * (POST /ai/diagram-from-image, multipart) y devuelve las acciones aplicables.
+ * @param diagramId - Id del diagrama destino (modo reemplazo)
+ * @param file - Archivo de imagen seleccionado por el usuario
+ * @param snapshot - Estado actual del lienzo (se envía como JSON en texto)
+ * @returns Acciones aplicables + advertencias
+ * @throws Error con el mensaje del backend si la peticion falla
+ */
+export async function importarImagenDesdeArchivo(
+  diagramId: string,
+  file: File,
+  snapshot: DiagramState,
+): Promise<ImportarImagenResponse> {
+  const formulario = new FormData();
+  formulario.append("diagramId", diagramId);
+  formulario.append("modo", "reemplazar");
+  // El backend espera el snapshot como JSON en texto (multipart no soporta objetos)
+  formulario.append("snapshot", JSON.stringify(snapshot));
+  formulario.append("file", file);
+
+  const res = await fetch(`${API_BASE_URL}/ai/diagram-from-image`, {
+    method: "POST",
+    credentials: "include",
+    body: formulario,
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as {
+      message?: string | string[];
+    };
+    const message = Array.isArray(body.message)
+      ? body.message.join(", ")
+      : body.message ?? "Error desconocido al importar la imagen";
+    throw new Error(message);
+  }
+
+  return (await res.json()) as ImportarImagenResponse;
 }
 
 /** Lista los modelos disponibles (GET /ai/models). */

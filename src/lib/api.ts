@@ -130,6 +130,22 @@ export function updateDiagram(
   });
 }
 
+/**
+ * Cambia el grupo de un diagrama (PATCH /diagrams/:id, CU-1.3).
+ * @param id - Id del diagrama
+ * @param group - Nuevo grupo (null para quitarlo)
+ * @returns El diagrama actualizado
+ */
+export function updateDiagramGroup(
+  id: string,
+  group: string | null,
+): Promise<Diagram> {
+  return apiFetch<Diagram>(`/diagrams/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ group }),
+  });
+}
+
 /** Elimina un diagrama (DELETE /diagrams/:id). */
 export function deleteDiagram(id: string): Promise<{ message: string }> {
   return apiFetch<{ message: string }>(`/diagrams/${id}`, {
