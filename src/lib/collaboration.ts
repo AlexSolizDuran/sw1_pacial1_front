@@ -175,8 +175,13 @@ class CollaborationClient {
 
   /**
    * Libera el bloqueo de un elemento.
+   * Solo libera si el lock es propio: nunca elimina el lock de otro
+   * colaborador, aunque el id del elemento coincida.
    */
   unlockElement(elementId: string): void {
+    const lock = this.localAwareness.get(elementId) as { userId: string } | undefined;
+    if (!lock) return;
+    if (this.myUserId && lock.userId !== this.myUserId) return;
     this.localAwareness.delete(elementId);
     this.broadcastAwareness();
   }

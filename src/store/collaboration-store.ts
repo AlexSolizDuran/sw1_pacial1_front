@@ -178,10 +178,25 @@ export const useCollaborationStore = create<CollaborationState>((set, get) => ({
       return { nodes: [], edges: [] };
     }
     const map = doc.getMap<unknown>("canvas");
-    return {
-      nodes: (map.get("nodes") as unknown[]) ?? [],
-      edges: (map.get("edges") as unknown[]) ?? [],
-    };
+    // Al rehidratar desde el Y.Doc se limpia el estado transitorio de React
+    // Flow (selected, dragging, measuring, measured): si el mapa guardo un
+    // `selected` (sesiones previas al fix o datos externos), el nodo no debe
+    // quedar seleccionado en todos los clientes (seleccion compartida).
+    const nodes = ((map.get("nodes") as unknown[]) ?? []).map((n) => {
+      const node = n as Record<string, unknown>;
+      const { selected, dragging, measured, ...rest } = node;
+      void selected;
+      void dragging;
+      void measured;
+      return rest;
+    });
+    const edges = ((map.get("edges") as unknown[]) ?? []).map((e) => {
+      const edge = e as Record<string, unknown>;
+      const { selected, ...rest } = edge;
+      void selected;
+      return rest;
+    });
+    return { nodes, edges };
   },
 
   // ─── Bloqueo de elementos (CU-2.5) ──────────────────────────────────
@@ -200,10 +215,14 @@ export const useCollaborationStore = create<CollaborationState>((set, get) => ({
   },
 
   releaseLock: (elementId) => {
+    const { lockedElements, userId } = get();
+    const actual = lockedElements[elementId];
+    // Solo libera un lock propio: un usuario nunca quita el lock de otro.
+    if (!actual || (userId && actual.userId !== userId)) return;
     collaborationClient.unlockElement(elementId);
     set((s) => {
       const next = { ...s.lockedElements };
-      delete next[elementId];
+      if (next[elementId]?.userId === userId) delete next[elementId];
       return { lockedElements: next };
     });
   },

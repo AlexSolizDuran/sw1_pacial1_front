@@ -220,6 +220,12 @@ export function SpringBootPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
+        <p className="border-b border-outline-variant bg-surface-container-high px-4 py-2 text-xs text-on-surface-variant">
+          Nota: si una clase tiene un atributo llamado <code>id</code> (en
+          cualquier mayúscula), ese atributo es la llave primaria: se genera
+          como <code>Long</code> autoincremental y no se duplica en el API.
+        </p>
+
         {error && (
           <p className="border-b border-outline-variant bg-error-container px-4 py-2 text-sm text-on-error-container">
             {error}

@@ -106,7 +106,25 @@ function isElementLocked(elementId: string): boolean {
 function syncToDoc(nodes: Node[], edges: Edge[]): void {
   const collaboration = useCollaborationStore.getState();
   if (collaboration.doc && collaboration.connected) {
-    collaboration.publishDiagram(nodes, edges);
+    // Se publica una copia SIN el estado transitorio de React Flow
+    // (selected, dragging, measuring, measured). Si se publica `selected`,
+    // los demas usuarios rehidratan el Y.Doc con el nodo marcado y React Flow
+    // lo selecciona en TODOS los clientes (seleccion compartida), lo que a su
+    // vez dispara select() remoto y rompe los locks colaborativos.
+    collaboration.publishDiagram(
+      nodes.map((n) => {
+        const { selected, dragging, measured, ...rest } = n;
+        void selected;
+        void dragging;
+        void measured;
+        return rest;
+      }),
+      edges.map((e) => {
+        const { selected, ...rest } = e;
+        void selected;
+        return rest;
+      }),
+    );
   }
 }
 

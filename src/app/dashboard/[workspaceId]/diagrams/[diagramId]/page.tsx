@@ -526,7 +526,21 @@ function DiagramEditorContent() {
     connect(() => {
       const collaboration = useCollaborationStore.getState();
       const { nodes, edges } = collaboration.readDiagram();
-      useEditorStore.setState({ nodes: nodes as Node[], edges: edges as Edge[] });
+      // Se re-hidrata SIN `selected` (viene limpio de readDiagram) y se re-aplica
+      // SOLO la seleccion local (selectedId). Sin este paso, React Flow deriva
+      // seleccion vacia al recibir cualquier edicion remota, dispara
+      // onSelectionChange(null) y libera el lock propio de cada usuario.
+      const selectedId = useEditorStore.getState().selectedId;
+      const nodesConSeleccion = (nodes as Node[]).map((n) =>
+        n.id === selectedId ? { ...n, selected: true } : n,
+      );
+      const edgesConSeleccion = (edges as Edge[]).map((e) =>
+        e.id === selectedId ? { ...e, selected: true } : e,
+      );
+      useEditorStore.setState({
+        nodes: nodesConSeleccion,
+        edges: edgesConSeleccion,
+      });
     });
 
     void joinSession(diagramId).then(() => {
