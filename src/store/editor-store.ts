@@ -67,6 +67,16 @@ interface EditorState {
     targetHandle?: string,
   ) => void;
   updateEdge: (id: string, data: Partial<UMLEdgeData>) => void;
+  /** Re-ancla una relacion a otro handle/nodo conservando su data (multiplicidades). */
+  reconnectEdge: (
+    id: string,
+    connection: {
+      source: string;
+      target: string;
+      sourceHandle?: string | null;
+      targetHandle?: string | null;
+    },
+  ) => void;
   deleteEdge: (id: string) => void;
   select: (id: string | null) => void;
   save: () => Promise<void>;
@@ -214,9 +224,15 @@ export const useEditorStore = create<EditorState>()(
 
   applyNodesChange: (changes) => {
     if (!canEdit()) return;
-    // Filtra los cambios de medicion ("dimensions"): es ruido local de
-    // React Flow al re-renderizar y, si se publica al Y.Doc, genera un
-    // ciclo infinito (doc -> setState -> re-medicion -> doc → ...).
+    // Los cambios de medicion ("dimensions") NO se publican al Y.Doc ni se
+    // guardan: si se sincronizan generan un ciclo infinito
+    // (doc -> setState -> re-medicion -> doc → ...). Aun asi se aplican en
+    // el store local para que cada nodo conserve su `measured` y el MiniMap
+    // pueda dibujar la miniatura (si se ignoran, queda todo en negro).
+    const dimensiones = changes.filter((c) => c.type === "dimensions");
+    if (dimensiones.length > 0) {
+      set({ nodes: applyNodeChanges(dimensiones, get().nodes) });
+    }
     const filtered = changes.filter((c) => c.type !== "dimensions");
     if (filtered.length === 0) return;
     const next = applyNodeChanges(filtered, get().nodes);
@@ -322,6 +338,26 @@ export const useEditorStore = create<EditorState>()(
       return { ...e, type: reactFlowType, data: edgeData };
     });
     set({ edges, dirty: true });
+    syncToDoc(get().nodes, edges);
+    debounceSave(get, set);
+  },
+
+  reconnectEdge: (id, connection) => {
+    if (!canEdit()) return;
+    if (isElementLocked(id)) return;
+    const edges = get().edges.map((e) => {
+      if (e.id !== id) return e;
+      // Solo cambia el anclaje (source/target + handles). data queda intacta,
+      // asi label y multiplicidades de la relacion no se pierden.
+      return {
+        ...e,
+        source: connection.source,
+        target: connection.target,
+        sourceHandle: connection.sourceHandle ?? undefined,
+        targetHandle: connection.targetHandle ?? undefined,
+      };
+    });
+    set({ edges, selectedId: id, dirty: true });
     syncToDoc(get().nodes, edges);
     debounceSave(get, set);
   },

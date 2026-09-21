@@ -299,7 +299,7 @@ export function SpringBootPanel({ onClose }: { onClose: () => void }) {
           <p className="px-4 py-8 text-center text-sm text-on-surface-variant">
             {nodes.length === 0
               ? "El diagrama no tiene clases para generar."
-              : "Presiona Generar para crear 1 carpeta por tabla con sus archivos Java."}
+              : "Presiona Generar para crear 1 módulo CRUD por clase (screen) con sus archivos Java."}
           </p>
         )}
 

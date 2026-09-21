@@ -15,14 +15,14 @@ export function NodeHeader({
   italic?: boolean;
 }) {
   return (
-    <div className="rounded-t-md bg-primary-container px-3 py-2 text-center">
+    <div className="rounded-t-md bg-white px-3 py-2 text-center">
       {stereotype && (
-        <div className="font-mono text-[10px] italic text-on-primary-container">
+        <div className="font-mono text-[10px] italic text-neutral-600">
           &lt;&lt;{stereotype}&gt;&gt;
         </div>
       )}
       <span
-        className={`font-headline text-sm font-semibold text-on-primary-container ${
+        className={`font-headline text-sm font-semibold text-black ${
           italic ? "italic" : ""
         }`}
       >

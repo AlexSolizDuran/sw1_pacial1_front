@@ -15,9 +15,9 @@ export function NodeCompartment({
 }) {
   const visible = isEmpty !== true && children != null;
   return (
-    <div className="border-t border-outline-variant">
+    <div className="border-t border-black">
       {visible && (
-        <div className="px-2 py-1 font-mono text-[10px] leading-relaxed text-on-surface">
+        <div className="px-2 py-1 font-mono text-[10px] leading-relaxed text-neutral-900">
           {children}
         </div>
       )}

@@ -79,12 +79,12 @@ export const UMLClassNode = memo(({ id, data, type }: NodeProps) => {
                 <div key={f.id} className="flex items-center gap-1 whitespace-nowrap">
                   <VisibilityIcon visibility={f.visibility} />
                   {f.isStatic && (
-                    <span className="text-on-surface-variant">__</span>
+                    <span className="text-neutral-500">__</span>
                   )}
                   <span>{f.name}</span>
-                  <span className="text-on-surface-variant">: {f.type}</span>
+                  <span className="text-neutral-500">: {f.type}</span>
                   {f.isReadonly && (
-                    <span className="text-on-surface-variant italic">{'{readonly}'}</span>
+                    <span className="text-neutral-500 italic">{'{readonly}'}</span>
                   )}
                 </div>
               ))}
@@ -96,17 +96,17 @@ export const UMLClassNode = memo(({ id, data, type }: NodeProps) => {
                 <div key={m.id} className="flex items-center gap-1 whitespace-nowrap">
                   <VisibilityIcon visibility={m.visibility} />
                   {m.isStatic && (
-                    <span className="text-on-surface-variant">__</span>
+                    <span className="text-neutral-500">__</span>
                   )}
                   {m.isAbstract ? (
                     <span className="italic">{m.name}</span>
                   ) : (
                     <span>{m.name}</span>
                   )}
-                  <span className="text-on-surface-variant">
+                  <span className="text-neutral-500">
                     ({m.params.map((p) => `${p.name}:${p.type}`).join(", ")})
                   </span>
-                  <span className="text-on-surface-variant">: {m.returnType}</span>
+                  <span className="text-neutral-500">: {m.returnType}</span>
                 </div>
               ))}
             </NodeCompartment>

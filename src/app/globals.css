@@ -133,3 +133,31 @@ body {
   color: var(--on-background);
   font-family: var(--font-body);
 }
+
+/*
+ * Agarres de reconexion de las relaciones.
+ *
+ * React Flow los dibuja (clase `react-flow__edgeupdater`) como circulos
+ * transparentes en cada extremo de una relacion cuando hay `onReconnect`.
+ * Se mantienen INVISIBLES pero funcionales: `pointer-events` y el cursor de
+ * arrastre siguen activos para que solo el agrandado de `reconnectRadius`
+ * amplie la zona clicable y el usuario pueda cambiar el ancla (o la clase
+ * destino/origen) manteniendo intactos el label y las multiplicidades.
+ */
+.react-flow__edgeupdater {
+  pointer-events: all;
+  cursor: grab;
+  fill: transparent;
+  stroke: transparent;
+}
+.react-flow__edgeupdater:active {
+  cursor: grabbing;
+  fill: transparent;
+  stroke: transparent;
+}
+.react-flow__edge.selected .react-flow__edgeupdater,
+.react-flow__edge:hover .react-flow__edgeupdater,
+.react-flow__edgeupdater:hover {
+  fill: transparent;
+  stroke: transparent;
+}

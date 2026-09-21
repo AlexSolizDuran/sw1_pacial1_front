@@ -13,7 +13,7 @@ export function VisibilityIcon({
   visibility: UMLVisibility;
 }) {
   return (
-    <span className="w-4 shrink-0 text-on-surface-variant">
+    <span className="w-4 shrink-0 text-neutral-500">
       {VISIBILITY_GLYPHS[visibility]}
     </span>
   );

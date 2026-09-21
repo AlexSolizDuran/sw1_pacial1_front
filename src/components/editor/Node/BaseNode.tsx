@@ -24,7 +24,7 @@ const HANDLES: Array<{ id: string; position: Position }> = [
 export function BaseNode({ children }: { children: ReactNode }) {
   return (
     <div
-      className="group min-w-[160px] overflow-hidden rounded-md border border-outline bg-surface-container-high shadow-lg shadow-black/30"
+      className="group min-w-[160px] overflow-hidden rounded-md border border-black bg-white shadow-lg shadow-black/30"
       style={{ zIndex: 1 }}
     >
       {/* Handles: permiten conectar relaciones desde cualquiera de los 4 lados.
@@ -35,7 +35,7 @@ export function BaseNode({ children }: { children: ReactNode }) {
           id={h.id}
           type="source"
           position={h.position}
-          className="h-2 w-2 bg-primary-fixed opacity-0 transition-opacity group-hover:opacity-100"
+          className="h-2 w-2 bg-black opacity-0 transition-opacity group-hover:opacity-100"
         />
       ))}
       {children}

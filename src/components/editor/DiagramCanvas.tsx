@@ -7,6 +7,8 @@ import {
   Controls,
   MiniMap,
   ConnectionMode,
+  type Edge,
+  type Connection,
 } from "@xyflow/react";
 import { useCallback } from "react";
 import "@xyflow/react/dist/style.css";
@@ -43,6 +45,7 @@ export function DiagramCanvas() {
   const applyNodesChange = useEditorStore((s) => s.applyNodesChange);
   const applyEdgesChange = useEditorStore((s) => s.applyEdgesChange);
   const addEdge = useEditorStore((s) => s.addEdge);
+  const reconnectEdge = useEditorStore((s) => s.reconnectEdge);
   const select = useEditorStore((s) => s.select);
   const releaseAllLocks = useCollaborationStore((s) => s.releaseAllLocks);
 
@@ -70,8 +73,17 @@ export function DiagramCanvas() {
     select(null);
   }, [releaseAllLocks, select]);
 
+  // Re-ancla una relacion arrastrando su extremo hacia otro handle (del mismo
+  // nodo u otro). El store conserva la data (label y multiplicidades).
+  const handleReconnect = useCallback(
+    (oldEdge: Edge, connection: Connection) => {
+      reconnectEdge(oldEdge.id, connection);
+    },
+    [reconnectEdge],
+  );
+
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full bg-[#eeeef0]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -80,6 +92,8 @@ export function DiagramCanvas() {
         onNodesChange={applyNodesChange}
         onEdgesChange={applyEdgesChange}
         onConnect={onConnect}
+        onReconnect={handleReconnect}
+        reconnectRadius={18}
         onSelectionChange={(params) =>
           select(params.nodes[0]?.id ?? params.edges[0]?.id ?? null)
         }
@@ -97,7 +111,7 @@ export function DiagramCanvas() {
           variant={BackgroundVariant.Dots}
           gap={20}
           size={1}
-          color="#3b494b"
+          color="#8a949b"
         />
         <Controls
           className="!bg-surface-container !border-outline-variant !rounded-md !shadow-lg [&>button]:!bg-surface-container-high [&>button]:!border-outline-variant [&>button]:!text-on-surface [&>button:hover]:!bg-surface-container-highest [&>button]:!w-8 [&>button]:!h-8 [&>button]:!flex [&>button]:!items-center [&>button]:!justify-center"

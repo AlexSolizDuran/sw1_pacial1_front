@@ -3,9 +3,7 @@
 import {
   type EdgeProps,
   type InternalNode,
-  Handle,
-  Position,
-  useNodes,
+  useStore,
 } from "@xyflow/react";
 import { useMemo } from "react";
 import type { UMLEdgeData, UMLEdgeType } from "@/types/diagram";
@@ -118,6 +116,7 @@ export function UMLBaseEdge({
   data,
   label,
   style,
+  interactionWidth = 20,
 }: EdgeProps) {
   const edgeData = (data as unknown as UMLEdgeData) ?? {};
   const edgeType: UMLEdgeType = edgeData.type ?? "association";
@@ -131,18 +130,48 @@ export function UMLBaseEdge({
   });
 
   // Obstaculos = todas las tablas de clase menos el origen y el destino.
-  // useNodes devuelve los nodos internos con ancho/alto medido en pantalla.
-  const allNodes = useNodes() as InternalNode[];
+  // Nota: se usa `nodeLookup` del store en vez de `useNodes()` porque este
+  // ultimo devuelve los nodos SIN `internals` (sin `measured` ni
+  // `positionAbsolute`); sin esas medidas el router no tiene rectangulos y
+  // todas las relaciones quedarian trazadas en linea recta. `nodeLookup`
+  // contiene los nodos internos con sus dimensiones medidas por React Flow.
+  const allNodes = useStore((state) => {
+    const arr: InternalNode[] = [];
+    state.nodeLookup.forEach((n) => arr.push(n));
+    return arr;
+  });
+
+  // Rectangulo de un nodo. positionAbsolute del internals puede llegar
+  // undefined en nodos que aun no se midieron/mapearon; como aca no hay
+  // nodos anidados (sin parentId), la caida a n.position es equivalente.
+  const rectOfInternal = (n: InternalNode): Rect => {
+    const x = n.internals?.positionAbsolute?.x ?? n.position.x;
+    const y = n.internals?.positionAbsolute?.y ?? n.position.y;
+    return {
+      x,
+      y,
+      width: n.measured?.width ?? 0,
+      height: n.measured?.height ?? 0,
+    };
+  };
+
   const obstacles = useMemo<Rect[]>(() => {
-    return allNodes
+    const others = allNodes
       .filter((n) => n.id !== source && n.id !== target)
       .filter((n) => n.measured?.width != null && n.measured?.height != null)
-      .map((n) => ({
-        x: n.internals.positionAbsolute.x,
-        y: n.internals.positionAbsolute.y,
-        width: n.measured?.width ?? 0,
-        height: n.measured?.height ?? 0,
-      }));
+      .map(rectOfInternal);
+
+    // Auto-relacion (source === target): la linea recta entre dos handles de la
+    // misma clase pasa por dentro de su cuerpo y quedaria oculta detras de la
+    // tabla (z-index menor). Por eso la propia clase tambien se trata como
+    // obstaculo para que el conector la rodee por afuera.
+    if (source === target) {
+      const self = allNodes.find((n) => n.id === source);
+      if (self && self.measured?.width != null && self.measured?.height != null) {
+        return [...others, rectOfInternal(self)];
+      }
+    }
+    return others;
   }, [allNodes, source, target]);
 
   // Rectangulos de las tablas origen y destino (se pasan al router para que
@@ -152,12 +181,7 @@ export function UMLBaseEdge({
       const n = allNodes.find((nd) => nd.id === id);
       if (!n || n.measured?.width == null || n.measured?.height == null)
         return null;
-      return {
-        x: n.internals.positionAbsolute.x,
-        y: n.internals.positionAbsolute.y,
-        width: n.measured.width,
-        height: n.measured.height,
-      };
+      return rectOfInternal(n);
     };
     return {
       sourceRect: rectOf(source) ?? undefined,
@@ -240,12 +264,14 @@ export function UMLBaseEdge({
 
   return (
     <g style={{ zIndex: -1 }}>
-      {/* Handle en el origen */}
-      <Handle
-        type="source"
-        position={Position.Top}
-        id={`${id}-source`}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-primary-container"
+      {/* Area de interaccion invisible: amplia la zona seleccionable/clicable
+          de la relacion mas alla de la linea fina (react-flow interactionWidth) */}
+      <path
+        d={pathD}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={interactionWidth}
+        className="cursor-pointer"
         style={{ zIndex: -1 }}
       />
 
@@ -253,7 +279,7 @@ export function UMLBaseEdge({
       <path
         d={pathD}
         fill="none"
-        stroke="#849495"
+        stroke="#000000"
         strokeWidth={1.5}
         markerStart={config.sourceMarker ?? undefined}
         markerEnd={config.targetMarker ?? undefined}
@@ -267,7 +293,7 @@ export function UMLBaseEdge({
           x={mid.x}
           y={mid.y - 8}
           textAnchor="middle"
-          fill="#b9cacb"
+          fill="#000000"
           fontSize={11}
           fontFamily="Inter, sans-serif"
           className="pointer-events-none select-none"
@@ -300,7 +326,7 @@ export function UMLBaseEdge({
         <text
           x={start.x + firstDir.x * 14 - firstDir.y * 8}
           y={start.y + firstDir.y * 14 + firstDir.x * 8}
-          fill="#b9cacb"
+          fill="#000000"
           fontSize={10}
           fontFamily="Inter, sans-serif"
           className="pointer-events-none select-none"
@@ -315,7 +341,7 @@ export function UMLBaseEdge({
           x={end.x - lastDir.x * 14 - lastDir.y * 8}
           y={end.y - lastDir.y * 14 + lastDir.x * 8}
           textAnchor="end"
-          fill="#b9cacb"
+          fill="#000000"
           fontSize={10}
           fontFamily="Inter, sans-serif"
           className="pointer-events-none select-none"
@@ -323,15 +349,6 @@ export function UMLBaseEdge({
           {edgeData.targetMultiplicity}
         </text>
       )}
-
-      {/* Handle en el destino */}
-      <Handle
-        type="target"
-        position={Position.Bottom}
-        id={`${id}-target`}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-primary-container"
-        style={{ zIndex: -1 }}
-      />
     </g>
   );
 }

@@ -19,7 +19,7 @@ export function EdgeMarkers(): ReactNode {
           markerHeight={10}
           orient="auto-start-reverse"
         >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#849495" />
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
         </marker>
 
         {/* Flecha abierta (dependencia, navegabilidad) */}
@@ -32,7 +32,7 @@ export function EdgeMarkers(): ReactNode {
           markerHeight={10}
           orient="auto-start-reverse"
         >
-          <path d="M 0 1 L 8 5 L 0 9" fill="none" stroke="#849495" strokeWidth={1.5} />
+          <path d="M 0 1 L 8 5 L 0 9" fill="none" stroke="#000000" strokeWidth={1.5} />
         </marker>
 
         {/* Triangulo hueco (herencia, implementacion) */}
@@ -47,8 +47,8 @@ export function EdgeMarkers(): ReactNode {
         >
           <path
             d="M 1 1 L 13 8 L 1 15 z"
-            fill="#111317"
-            stroke="#849495"
+            fill="#ffffff"
+            stroke="#000000"
             strokeWidth={1.5}
           />
         </marker>
@@ -65,8 +65,8 @@ export function EdgeMarkers(): ReactNode {
         >
           <path
             d="M 8 1 L 14 8 L 8 15 L 2 8 z"
-            fill="#111317"
-            stroke="#849495"
+            fill="#ffffff"
+            stroke="#000000"
             strokeWidth={1.5}
           />
         </marker>
@@ -81,7 +81,7 @@ export function EdgeMarkers(): ReactNode {
           markerHeight={16}
           orient="auto-start-reverse"
         >
-          <path d="M 8 1 L 14 8 L 8 15 L 2 8 z" fill="#849495" />
+          <path d="M 8 1 L 14 8 L 8 15 L 2 8 z" fill="#000000" />
         </marker>
       </defs>
     </svg>

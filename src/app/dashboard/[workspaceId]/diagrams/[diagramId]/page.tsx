@@ -97,7 +97,7 @@ function EditorTopBar({
   const versionesCount = useVersionesStore((s) => s.versiones.length);
   const versionesOpen = useVersionesStore((s) => s.open);
   const setVersionesOpen = useVersionesStore((s) => s.setOpen);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getNodesBounds } = useReactFlow();
 
   const handleAddNode = useCallback(
     (type: UMLNodeType) => {
@@ -210,7 +210,10 @@ function EditorTopBar({
     async (format: ImageFormat) => {
       setExportandoImg(true);
       try {
-        await downloadDiagramImage(nodes, diagramName, format);
+        // getNodesBounds via el hook lee el nodeLookup interno (medicion del
+        // DOM), evitando recortes por missing measured en los nodos del store.
+        const bounds = getNodesBounds(nodes);
+        await downloadDiagramImage(nodes, diagramName, format, bounds);
       } catch (err) {
         alert(
           err instanceof Error ? err.message : "No se pudo exportar la imagen.",
@@ -220,7 +223,7 @@ function EditorTopBar({
         setExportOpen(false);
       }
     },
-    [nodes, diagramName],
+    [nodes, diagramName, getNodesBounds],
   );
 
   /**
